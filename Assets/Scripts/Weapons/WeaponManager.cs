@@ -4,7 +4,6 @@ using System.Linq;
 
 /// <summary>
 /// Менеджер оружия с инвентарём на 3 слота и системой подбора.
-/// Работает с упрощённой системой патронов (только магазин).
 /// </summary>
 public class WeaponManager : MonoBehaviour
 {
@@ -12,10 +11,8 @@ public class WeaponManager : MonoBehaviour
     public Transform weaponAnchor;
 
     [Header("Settings")]
-    [Range(1f, 1000f)]
-    public float rotateSpeed = 1000f;
-    [Range(-180f, 180f)]
-    public float angleOffset = -90f;
+    [Range(1f, 1000f)] public float rotateSpeed = 1000f;
+    [Range(-180f, 180f)] public float angleOffset = -90f;
 
     [Header("Starting Weapons")]
     public WeaponBase startingWeaponSlot1;
@@ -30,17 +27,14 @@ public class WeaponManager : MonoBehaviour
     [Tooltip("Заменять текущее оружие если инвентарь полон")]
     public bool replaceCurrentWeaponOnFull = true;
 
-    // Инвентарь
     private List<WeaponBase> inventory = new List<WeaponBase>(new WeaponBase[3]);
     private int currentSlotIndex = 0;
     private WeaponBase currentWeapon;
 
-    // Ссылки
     private Camera mainCamera;
     private SpriteRenderer playerSprite;
     private bool isFacingLeft = false;
 
-    // События для UI
     public System.Action<int, WeaponBase> OnWeaponChanged;
     public System.Action<List<WeaponBase>> OnInventoryUpdated;
 
@@ -48,9 +42,7 @@ public class WeaponManager : MonoBehaviour
     {
         mainCamera = Camera.main;
         playerSprite = GetComponent<SpriteRenderer>();
-        if (playerSprite == null)
-            playerSprite = GetComponentInChildren<SpriteRenderer>();
-
+        if (playerSprite == null) playerSprite = GetComponentInChildren<SpriteRenderer>();
         if (weaponAnchor == null) Debug.LogError("[WeaponManager] Weapon Anchor не назначен!");
         if (mainCamera == null) Debug.LogError("[WeaponManager] Camera.main не найдена!");
     }
@@ -62,7 +54,6 @@ public class WeaponManager : MonoBehaviour
         if (startingWeaponSlot1 != null) { inventory[0] = Instantiate(startingWeaponSlot1); inventory[0].gameObject.SetActive(false); }
         if (startingWeaponSlot2 != null) { inventory[1] = Instantiate(startingWeaponSlot2); inventory[1].gameObject.SetActive(false); }
         if (startingWeaponSlot3 != null) { inventory[2] = Instantiate(startingWeaponSlot3); inventory[2].gameObject.SetActive(false); }
-
         EquipFirstAvailableWeapon();
         OnInventoryUpdated?.Invoke(inventory);
         Debug.Log($"[WeaponManager] 🎒 Инвентарь: [{GetWeaponName(0)}] [{GetWeaponName(1)}] [{GetWeaponName(2)}]");
@@ -106,7 +97,6 @@ public class WeaponManager : MonoBehaviour
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (scroll > 0f) SwitchToNextWeapon();
         else if (scroll < 0f) SwitchToPreviousWeapon();
-
         if (Input.GetKeyDown(KeyCode.Alpha1)) SwitchToSlot(0);
         if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchToSlot(1);
         if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchToSlot(2);
@@ -133,7 +123,6 @@ public class WeaponManager : MonoBehaviour
     public void SwitchToSlot(int slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= 3 || inventory[slotIndex] == null || slotIndex == currentSlotIndex) return;
-
         if (currentWeapon != null) currentWeapon.OnUnequip();
         currentSlotIndex = slotIndex;
         EquipCurrentWeapon();
@@ -143,11 +132,9 @@ public class WeaponManager : MonoBehaviour
     {
         currentWeapon = inventory[currentSlotIndex];
         if (currentWeapon == null) return;
-
         currentWeapon.OnEquip(weaponAnchor);
         currentWeapon.gameObject.SetActive(true);
         currentWeapon.UpdateAimDirection(mainCamera.ScreenToWorldPoint(Input.mousePosition));
-
         OnWeaponChanged?.Invoke(currentSlotIndex, currentWeapon);
         OnInventoryUpdated?.Invoke(inventory);
     }
@@ -161,7 +148,6 @@ public class WeaponManager : MonoBehaviour
     public bool PickUpWeaponWithAmmo(WeaponBase weaponPrefab, int ammoInMag, int ammoReserve)
     {
         if (weaponPrefab == null) return false;
-
         Debug.Log($"[WeaponManager] 📦 Подбор: {weaponPrefab.weaponName}");
 
         int emptySlot = FindEmptySlot();
@@ -169,14 +155,11 @@ public class WeaponManager : MonoBehaviour
 
         if (emptySlot != -1)
         {
-            // ✅ Есть пустой слот — просто добавляем
             newWeapon = Instantiate(weaponPrefab);
             inventory[emptySlot] = newWeapon;
             newWeapon.gameObject.SetActive(false);
-            if (ammoInMag >= 0) newWeapon.SetAmmo(ammoInMag, 0);  // ✅ Передаём 0 вместо резерва
-
+            if (ammoInMag >= 0) newWeapon.SetAmmo(ammoInMag, 0);
             Debug.Log($"[WeaponManager] ✅ В слот {emptySlot + 1}");
-
             if (currentSlotIndex == emptySlot || currentWeapon == null)
             {
                 currentSlotIndex = emptySlot;
@@ -185,44 +168,31 @@ public class WeaponManager : MonoBehaviour
         }
         else if (replaceCurrentWeaponOnFull)
         {
-            // ✅ Инвентарь полон — ЗАМЕНЯЕМ текущее
             int oldSlotIndex = currentSlotIndex;
             WeaponBase oldWeapon = currentWeapon;
-
             Debug.Log($"[WeaponManager] 🔄 Инвентарь полон! Замена в слоте {oldSlotIndex + 1}...");
 
-            // 1️⃣ Снимаем текущее оружие с якоря
             if (oldWeapon != null) oldWeapon.OnUnequip();
-
-            // 2️⃣ Очищаем ссылку
             currentWeapon = null;
             inventory[oldSlotIndex] = null;
 
-            // 3️⃣ Создаём префаб выпавшего оружия на земле
             WeaponBase pickupPrefab = FindPickupPrefabByName(oldWeapon.weaponName);
             if (pickupPrefab != null)
             {
                 GameObject dropped = Instantiate(pickupPrefab.gameObject, transform.position, Quaternion.identity);
                 WeaponDrop weaponDrop = dropped.GetComponent<WeaponDrop>();
                 if (weaponDrop != null)
-                {
-                    // ✅ Сохраняем ТОЛЬКО патроны в магазине
                     weaponDrop.savedAmmoInMag = oldWeapon.GetCurrentAmmoInMag();
-                }
             }
 
-            // 4️⃣ Уничтожаем старое оружие
             if (oldWeapon != null) Destroy(oldWeapon.gameObject);
 
-            // 5️⃣ Создаём новое оружие в тот же слот
             newWeapon = Instantiate(weaponPrefab);
             inventory[oldSlotIndex] = newWeapon;
             newWeapon.gameObject.SetActive(false);
-            if (ammoInMag >= 0) newWeapon.SetAmmo(ammoInMag, 0);  // ✅ Передаём 0 вместо резерва
-
+            if (ammoInMag >= 0) newWeapon.SetAmmo(ammoInMag, 0);
             Debug.Log($"[WeaponManager] ✅ Новое оружие в слоте {oldSlotIndex + 1}");
 
-            // 6️⃣ Экипируем новое оружие
             currentSlotIndex = oldSlotIndex;
             EquipCurrentWeapon();
         }
@@ -248,11 +218,9 @@ public class WeaponManager : MonoBehaviour
             return;
         }
 
-        // ✅ Лог только с магазином (нет резерва)
         Debug.Log($"[WeaponManager] 🗑️ Выброс: {currentWeapon.weaponName} | {currentWeapon.GetCurrentAmmoInMag()}/{currentWeapon.GetMaxMagazineSize()}");
 
         WeaponBase pickupPrefab = FindPickupPrefabByName(currentWeapon.weaponName);
-
         if (pickupPrefab == null)
         {
             Debug.LogWarning($"[WeaponManager] ⚠️ Не найден префаб для '{currentWeapon.weaponName}' в pickupPrefabs!");
@@ -264,17 +232,14 @@ public class WeaponManager : MonoBehaviour
 
         GameObject dropped = Instantiate(pickupPrefab.gameObject, dropPosition, Quaternion.identity);
         WeaponDrop weaponDrop = dropped.GetComponent<WeaponDrop>();
-
         if (weaponDrop != null)
         {
-            // ✅ Сохраняем ТОЛЬКО патроны в магазине
             weaponDrop.savedAmmoInMag = currentWeapon.GetCurrentAmmoInMag();
             Debug.Log($"[WeaponManager] 💾 Патроны сохранены: {weaponDrop.savedAmmoInMag}/{currentWeapon.GetMaxMagazineSize()}");
         }
 
         Destroy(currentWeapon.gameObject);
         inventory[currentSlotIndex] = null;
-
         if (!skipSwitch) SwitchToNextWeapon();
         OnInventoryUpdated?.Invoke(inventory);
     }
@@ -289,29 +254,22 @@ public class WeaponManager : MonoBehaviour
     {
         if (string.IsNullOrEmpty(weaponName) || pickupPrefabs == null) return null;
         WeaponBase found = pickupPrefabs.FirstOrDefault(p => p != null && p.weaponName == weaponName);
-
-        if (found != null)
-            Debug.Log($"[WeaponManager] 🔍 Найден префаб: {weaponName}");
-        else
-            Debug.LogWarning($"[WeaponManager] ❌ Не найден префаб: {weaponName}. Проверь pickupPrefabs массив!");
-
+        if (found != null) Debug.Log($"[WeaponManager] 🔍 Найден префаб: {weaponName}");
+        else Debug.LogWarning($"[WeaponManager] ❌ Не найден префаб: {weaponName}. Проверь pickupPrefabs массив!");
         return found;
     }
 
     private int FindEmptySlot()
     {
-        for (int i = 0; i < 3; i++)
-            if (inventory[i] == null) return i;
+        for (int i = 0; i < 3; i++) if (inventory[i] == null) return i;
         return -1;
     }
 
     private void AimAtMouse()
     {
         if (currentWeapon == null || mainCamera == null) return;
-
         Vector3 mousePos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
         Vector2 direction = (Vector2)mousePos - (Vector2)weaponAnchor.position;
-
         if (direction.sqrMagnitude > 0.01f)
         {
             float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg + angleOffset;
@@ -324,18 +282,7 @@ public class WeaponManager : MonoBehaviour
     public WeaponBase GetCurrentWeapon() => currentWeapon;
     public int GetCurrentSlotIndex() => currentSlotIndex;
     public List<WeaponBase> GetInventory() => inventory;
-
-    public string GetWeaponName(int slotIndex)
-        => (slotIndex >= 0 && slotIndex < 3 && inventory[slotIndex] != null)
-            ? inventory[slotIndex].weaponName : "Пусто";
-
-    public bool IsSlotEmpty(int slotIndex)
-        => slotIndex >= 0 && slotIndex < 3 && inventory[slotIndex] == null;
-
-    public int GetEmptySlotsCount()
-    {
-        int c = 0;
-        for (int i = 0; i < 3; i++) if (inventory[i] == null) c++;
-        return c;
-    }
+    public string GetWeaponName(int slotIndex) => (slotIndex >= 0 && slotIndex < 3 && inventory[slotIndex] != null) ? inventory[slotIndex].weaponName : "Пусто";
+    public bool IsSlotEmpty(int slotIndex) => slotIndex >= 0 && slotIndex < 3 && inventory[slotIndex] == null;
+    public int GetEmptySlotsCount() { int c = 0; for (int i = 0; i < 3; i++) if (inventory[i] == null) c++; return c; }
 }

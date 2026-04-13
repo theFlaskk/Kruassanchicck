@@ -4,7 +4,6 @@ using TMPro;
 
 /// <summary>
 /// UI для отображения текущего оружия и патронов в магазине.
-/// Работает с упрощённой системой (без резерва).
 /// </summary>
 public class AmmoUI : MonoBehaviour
 {
@@ -13,7 +12,7 @@ public class AmmoUI : MonoBehaviour
     public GameObject weaponNameObj;
 
     [Header("Ammo Texts")]
-    [Tooltip("Текст: патроны в магазине")]
+    [Tooltip("Текст: текущие патроны в магазине (например '12')")]
     public GameObject ammoInMagObj;
 
     [Tooltip("Текст: ёмкость магазина (например '/ 12')")]
@@ -52,9 +51,9 @@ public class AmmoUI : MonoBehaviour
 
     private void Start()
     {
-        // ✅ Используем новый метод Unity 2023.1+
-        weaponManager = FindFirstObjectByType<WeaponManager>();
+        Debug.Log("[AmmoUI] 🔍 Start() начался");
 
+        weaponManager = FindFirstObjectByType<WeaponManager>();
         if (weaponManager == null)
         {
             Debug.LogError("[AmmoUI] ❌ WeaponManager не найден!");
@@ -62,11 +61,13 @@ public class AmmoUI : MonoBehaviour
             return;
         }
 
+        Debug.Log("[AmmoUI] ✅ WeaponManager найден");
+
         // Подписываемся на события
         weaponManager.OnWeaponChanged += OnWeaponChanged;
         weaponManager.OnInventoryUpdated += OnInventoryUpdated;
 
-        // Кэшируем компоненты
+        // Кэшируем компоненты С ПРОВЕРКОЙ
         CacheText(weaponNameObj, ref weaponNameText, "WeaponName");
         CacheText(ammoInMagObj, ref ammoText, "AmmoInMag");
         CacheText(maxMagObj, ref maxText, "MaxMag");
@@ -97,14 +98,25 @@ public class AmmoUI : MonoBehaviour
         }
 
         Debug.Log("[AmmoUI] ✅ UI запущен");
+
+        // ✅ ПРОВЕРКА: отображаем тестовые значения
+        Debug.Log($"[AmmoUI] 📝 ammoText: {(ammoText != null ? "✅" : "❌")}");
+        Debug.Log($"[AmmoUI] 📝 maxText: {(maxText != null ? "✅" : "❌")}");
     }
 
     private void CacheText(GameObject obj, ref TextMeshProUGUI text, string name)
     {
-        if (obj == null) return;
+        if (obj == null)
+        {
+            Debug.LogWarning($"[AmmoUI] ⚠️ {name}Obj = NULL! Перетащи объект в Inspector");
+            return;
+        }
+
         text = obj.GetComponent<TextMeshProUGUI>();
         if (text != null)
-            Debug.Log($"[AmmoUI] 📝 {name}: ✅ НАЙДЕН");
+            Debug.Log($"[AmmoUI] 📝 {name}: ✅ НАЙДЕН на объекте {obj.name}");
+        else
+            Debug.LogError($"[AmmoUI] ❌ {name}: НЕ НАЙДЕН TextMeshPro на {obj.name}! Добавь компонент!");
     }
 
     private void Update()
@@ -116,6 +128,8 @@ public class AmmoUI : MonoBehaviour
 
             if (newWeapon != currentWeapon || newSlotIndex != currentSlotIndex)
             {
+                Debug.Log($"[AmmoUI] 🔄 Смена оружия: {currentWeapon?.weaponName ?? "NULL"} → {newWeapon?.weaponName ?? "NULL"}");
+
                 if (currentWeapon != null)
                 {
                     currentWeapon.OnAmmoUpdated -= UpdateAmmo;
@@ -127,19 +141,21 @@ public class AmmoUI : MonoBehaviour
 
                 if (currentWeapon != null)
                 {
+                    // ✅ Подписываемся на события оружия
                     currentWeapon.OnAmmoUpdated += UpdateAmmo;
                     currentWeapon.OnReloadUpdated += UpdateReload;
+
+                    Debug.Log($"[AmmoUI] ✅ Подписан на события: {currentWeapon.weaponName}");
 
                     if (weaponNameText != null)
                         weaponNameText.text = currentWeapon.weaponName;
 
-                    // ✅ Обновляем патроны сразу
-                    UpdateAmmo(
-                        currentWeapon.GetCurrentAmmoInMag(),
-                        0,  // ✅ Резерв всегда 0
-                        currentWeapon.GetMaxMagazineSize()
-                    );
+                    // ✅ Обновляем патроны сразу при смене оружия
+                    int ammo = currentWeapon.GetCurrentAmmoInMag();
+                    int maxMag = currentWeapon.GetMaxMagazineSize();
+                    Debug.Log($"[AmmoUI] 📊 Начальные патроны: {ammo} / {maxMag}");
 
+                    UpdateAmmo(ammo, 0, maxMag);
                     UpdateSlotIndicators();
                 }
             }
@@ -158,34 +174,62 @@ public class AmmoUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Обновляет тексты патронов (резерв игнорируется)
+    /// Вызывается СОБЫТИЕМ из WeaponBase при изменении патронов
     /// </summary>
     private void UpdateAmmo(int inMag, int inReserve, int maxMag)
     {
-        // ✅ Лог только с магазином
-        Debug.Log($"[AmmoUI] 📊 Патроны: {inMag} / {maxMag}");
+        // ✅ ОТЛАДКА: подробный лог
+        Debug.Log($"[AmmoUI] 📊 UpdateAmmo вызван: {inMag} / {maxMag}");
+        Debug.Log($"[AmmoUI] 📝 ammoText = {(ammoText != null ? "✅" : "❌")}");
+        Debug.Log($"[AmmoUI] 📝 maxText = {(maxText != null ? "✅" : "❌")}");
 
+        // ✅ Обновляем текущие патроны
         if (ammoText != null)
+        {
             ammoText.text = inMag.ToString();
+            Debug.Log($"[AmmoUI] ✏️ ammoText.text = '{ammoText.text}'");
+        }
+        else
+        {
+            Debug.LogError("[AmmoUI] ❌ ammoText = NULL! Текст не обновится!");
+        }
 
-        // ✅ Показываем ёмкость магазина вместо резерва
+        // ✅ Обновляем ёмкость магазина
         if (maxText != null)
+        {
             maxText.text = $"/ {maxMag}";
+            Debug.Log($"[AmmoUI] ✏️ maxText.text = '{maxText.text}'");
+        }
+        else
+        {
+            Debug.LogWarning("[AmmoUI] ⚠️ maxText = NULL! Ёмкость не отобразится!");
+        }
 
-        // Цвет текста в зависимости от количества патронов
+        // ✅ Цвет текста в зависимости от количества патронов
         if (ammoText != null)
         {
             if (inMag == 0)
+            {
                 ammoText.color = emptyAmmoColor;
+                Debug.Log("[AmmoUI] 🎨 Цвет: КРАСНЫЙ (пусто)");
+            }
             else if (inMag <= maxMag * 0.25f)
+            {
                 ammoText.color = lowAmmoColor;
+                Debug.Log("[AmmoUI] 🎨 Цвет: ЖЁЛТЫЙ (мало)");
+            }
             else
+            {
                 ammoText.color = normalColor;
+                Debug.Log("[AmmoUI] 🎨 Цвет: БЕЛЫЙ (норма)");
+            }
         }
     }
 
     private void UpdateReload(bool isReloading, float progress)
     {
+        Debug.Log($"[AmmoUI] 🔄 UpdateReload: {isReloading} | {progress:P0}");
+
         if (reloadTextObj != null)
             reloadTextObj.SetActive(isReloading);
 
@@ -196,9 +240,6 @@ public class AmmoUI : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Обновить индикаторы слотов инвентаря
-    /// </summary>
     private void UpdateSlotIndicators()
     {
         if (slotImages == null || slotImages.Length < 3) return;
