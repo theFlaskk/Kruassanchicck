@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Базовый класс оружия.
+/// Базовый класс оружия для игрока и врагов.
 /// </summary>
 public class WeaponBase : MonoBehaviour
 {
@@ -121,12 +121,62 @@ public class WeaponBase : MonoBehaviour
         NotifyAmmoUpdated();
     }
 
+    /// <summary>
+    /// ✅ Создание пули с определением типа стрелка
+    /// </summary>
     protected virtual void Shoot()
     {
         if (projectilePrefab == null || firePoint == null) return;
-        GameObject bullet = Instantiate(projectilePrefab, firePoint.position, firePoint.rotation);
+
+        // Смещаем спавн пули чтобы не задевала стрелка
+        Vector3 spawnPosition = firePoint.position + (firePoint.right * 0.2f);
+        GameObject bullet = Instantiate(projectilePrefab, spawnPosition, firePoint.rotation);
+
+        // Настраиваем скрипт пули
+        Projectile projectile = bullet.GetComponent<Projectile>();
+        if (projectile != null)
+        {
+            projectile.shooter = gameObject;
+            projectile.damage = damage;
+
+            // ✅ ОПРЕДЕЛЯЕМ ТИП СТРЕЛКА
+            if (CompareTag("Player"))
+            {
+                projectile.shooterType = Projectile.ShooterType.Player;
+            }
+            else if (CompareTag("Enemy"))
+            {
+                projectile.shooterType = Projectile.ShooterType.Enemy;
+            }
+            else
+            {
+                // Проверяем родителя (для оружия врага которое внутри префаба)
+                Transform parent = transform.parent;
+                if (parent != null && parent.CompareTag("Enemy"))
+                {
+                    projectile.shooterType = Projectile.ShooterType.Enemy;
+                }
+                else if (parent != null && parent.CompareTag("Player"))
+                {
+                    projectile.shooterType = Projectile.ShooterType.Player;
+                }
+                else
+                {
+                    // По умолчанию считаем что это игрок
+                    projectile.shooterType = Projectile.ShooterType.Player;
+                }
+            }
+
+            Debug.Log($"[WeaponBase] 🔫 Пуля создана | Тип: {projectile.shooterType}");
+        }
+
+        // Применяем силу
         Rigidbody2D rb = bullet.GetComponent<Rigidbody2D>();
-        if (rb != null) rb.AddForce(firePoint.right.normalized * projectileForce, ForceMode2D.Impulse);
+        if (rb != null)
+        {
+            Vector2 forceDirection = firePoint.right.normalized;
+            rb.AddForce(forceDirection * projectileForce, ForceMode2D.Impulse);
+        }
     }
 
     public virtual void WeaponUpdate()
@@ -149,7 +199,6 @@ public class WeaponBase : MonoBehaviour
     public bool IsReloading() => isReloading;
     public float GetReloadProgress() => isReloading ? 1f - (reloadTimer / reloadTime) : 0f;
 
-    // ✅ НОВЫЙ МЕТОД: Сброс fireTimer (для врагов)
     public void ResetFireTimer() { fireTimer = 0f; }
 
     public virtual void SetAmmo(int ammoInMag, int ammoReserve)

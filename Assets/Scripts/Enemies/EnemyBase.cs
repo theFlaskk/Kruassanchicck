@@ -2,7 +2,7 @@ using UnityEngine;
 using System;
 
 /// <summary>
-/// Базовый класс врага с здоровьем и системой смерти.
+/// Базовый класс врага с здоровьем и смертью.
 /// </summary>
 public class EnemyBase : MonoBehaviour
 {
@@ -21,7 +21,7 @@ public class EnemyBase : MonoBehaviour
     public WeaponBase weaponDropPrefab;
 
     // События
-    public Action<int, int> OnHealthChanged;  // (текущее, макс)
+    public Action<int, int> OnHealthChanged;
     public Action OnDeath;
     public Action OnSpawn;
 
@@ -47,12 +47,16 @@ public class EnemyBase : MonoBehaviour
     /// </summary>
     public virtual void TakeDamage(int damage)
     {
-        if (isDead) return;
+        if (isDead)
+        {
+            Debug.Log($"[EnemyBase] ⚠️ Враг уже мёртв, урон игнорируется");
+            return;
+        }
 
         currentHealth = Mathf.Max(0, currentHealth - damage);
         OnHealthChanged?.Invoke(currentHealth, maxHealth);
 
-        Debug.Log($"[EnemyBase] 💥 Урон: {damage} | HP: {currentHealth}/{maxHealth}");
+        Debug.Log($"[EnemyBase] 💥 Урон получен: {damage} | HP: {currentHealth}/{maxHealth}");
 
         if (currentHealth <= 0)
         {
@@ -72,13 +76,11 @@ public class EnemyBase : MonoBehaviour
 
         OnDeath?.Invoke();
 
-        // Выбрасываем оружие
         if (dropWeaponOnDeath && weaponDropPrefab != null)
         {
             DropWeapon();
         }
 
-        // Отключаем коллайдеры и физику
         Collider2D[] colliders = GetComponents<Collider2D>();
         foreach (var col in colliders)
             col.enabled = false;
@@ -89,7 +91,6 @@ public class EnemyBase : MonoBehaviour
             rb.simulated = false;
         }
 
-        // Уничтожаем через 3 секунды
         Destroy(gameObject, 3f);
     }
 
@@ -102,7 +103,6 @@ public class EnemyBase : MonoBehaviour
 
         GameObject dropped = Instantiate(weaponDropPrefab.gameObject, transform.position, Quaternion.identity);
 
-        // Сохраняем патроны из оружия врага (если есть)
         EnemyWeapon enemyWeapon = GetComponent<EnemyWeapon>();
         if (enemyWeapon != null && enemyWeapon.currentWeapon != null)
         {
