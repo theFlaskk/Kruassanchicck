@@ -1,34 +1,65 @@
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody2D))]
-[RequireComponent(typeof(PlayerStats))]
 public class PlayerMovement : MonoBehaviour
 {
+    [Header("Movement Settings")]
+    [Tooltip("Скорость передвижения")]
+    public float moveSpeed = 5f;
+
+    [Tooltip("Ускорение")]
+    public float acceleration = 10f;
+
+    [Tooltip("Замедление")]
+    public float deceleration = 10f;
+
     private Rigidbody2D rb;
-    private PlayerStats stats;
-    private Vector2 movementInput;
+    private Vector2 currentVelocity;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
-        stats = GetComponent<PlayerStats>();
     }
 
-    private void Update()
+    /// <summary>
+    /// Обработать ввод движения (вызывается из PlayerController)
+    /// </summary>
+    public void HandleMovement(Vector2 moveInput)
     {
-        // Считываем ввод
-        float moveX = Input.GetAxisRaw("Horizontal");
-        float moveY = Input.GetAxisRaw("Vertical");
-        movementInput = new Vector2(moveX, moveY).normalized;
+        // ✅ ЖЁСТКАЯ ПРОВЕРКА
+        PlayerController controller = GetComponent<PlayerController>();
+        if (controller != null && !controller.CanReceiveInput())
+        {
+            return;  // Не двигаемся если управление выключено!
+        }
 
-        // ✅ ЗДЕСЬ БОЛЬШЕ НЕТ НИЧЕГО ПРО АНИМАЦИИ И ПОВОРОТЫ
-        // Этим занимается скрипт PlayerAnimation и WeaponAim
+        if (rb == null) return;
+
+        // Плавное ускорение/замедление
+        if (moveInput.magnitude > 0.1f)
+        {
+            currentVelocity = Vector2.Lerp(currentVelocity, moveInput * moveSpeed, acceleration * Time.deltaTime);
+        }
+        else
+        {
+            currentVelocity = Vector2.Lerp(currentVelocity, Vector2.zero, deceleration * Time.deltaTime);
+        }
+
+        rb.linearVelocity = currentVelocity;
     }
 
-    private void FixedUpdate()
+    /// <summary>
+    /// Получить текущую скорость
+    /// </summary>
+    public Vector2 GetVelocity() => rb != null ? rb.linearVelocity : Vector2.zero;
+
+    /// <summary>
+    /// Остановить игрока
+    /// </summary>
+    public void Stop()
     {
-        // Физическое движение
-        // Примечание: rb.linearVelocity работает в Unity 2022.2+, если у тебя ошибка, замени на rb.velocity
-        rb.linearVelocity = movementInput * stats.CurrentMoveSpeed;
+        if (rb != null) rb.linearVelocity = Vector2.zero;
+        currentVelocity = Vector2.zero;
+        Debug.Log($"[PlayerMovement] 🛑 {gameObject.name} остановлен");
     }
 }

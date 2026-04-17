@@ -277,7 +277,33 @@ public class WeaponManager : MonoBehaviour
         }
         currentWeapon.UpdateAimDirection(mousePos);
     }
+    /// <summary>
+    /// Принудительно направить оружие на позицию (для ИИ)
+    /// </summary>
+    public void ForceAimAtPosition(Vector3 targetPosition)
+    {
+        if (currentWeapon == null || mainCamera == null) return;
 
+        Vector2 direction = (Vector2)targetPosition - (Vector2)weaponAnchor.position;
+
+        if (direction.sqrMagnitude > 0.01f)
+        {
+            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg + angleOffset;
+            currentWeapon.transform.rotation = Quaternion.Euler(0, 0, angle);
+            currentWeapon.UpdateAimDirection(targetPosition);
+        }
+    }
+
+    /// <summary>
+    /// Выстрелить текущим оружием (для ИИ)
+    /// </summary>
+    public void TryShootCurrent()
+    {
+        if (currentWeapon != null)
+        {
+            currentWeapon.TryShoot();
+        }
+    }
     // === ПУБЛИЧНЫЕ МЕТОДЫ ===
     public WeaponBase GetCurrentWeapon() => currentWeapon;
     public int GetCurrentSlotIndex() => currentSlotIndex;
