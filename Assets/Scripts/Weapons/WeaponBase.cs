@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Базовый класс оружия для игрока и врагов.
+/// Базовый класс оружия.
 /// </summary>
 public class WeaponBase : MonoBehaviour
 {
@@ -121,9 +121,6 @@ public class WeaponBase : MonoBehaviour
         NotifyAmmoUpdated();
     }
 
-    /// <summary>
-    /// ✅ Создание пули с определением типа стрелка
-    /// </summary>
     protected virtual void Shoot()
     {
         if (projectilePrefab == null || firePoint == null) return;
@@ -138,8 +135,9 @@ public class WeaponBase : MonoBehaviour
         {
             projectile.shooter = gameObject;
             projectile.damage = damage;
+            projectile.damageDelay = 0.3f;  // ✅ Устанавливаем задержку урона
 
-            // ✅ ОПРЕДЕЛЯЕМ ТИП СТРЕЛКА
+            // Определяем тип стрелка
             if (CompareTag("Player"))
             {
                 projectile.shooterType = Projectile.ShooterType.Player;
@@ -150,24 +148,16 @@ public class WeaponBase : MonoBehaviour
             }
             else
             {
-                // Проверяем родителя (для оружия врага которое внутри префаба)
                 Transform parent = transform.parent;
                 if (parent != null && parent.CompareTag("Enemy"))
                 {
                     projectile.shooterType = Projectile.ShooterType.Enemy;
                 }
-                else if (parent != null && parent.CompareTag("Player"))
-                {
-                    projectile.shooterType = Projectile.ShooterType.Player;
-                }
                 else
                 {
-                    // По умолчанию считаем что это игрок
                     projectile.shooterType = Projectile.ShooterType.Player;
                 }
             }
-
-            Debug.Log($"[WeaponBase] 🔫 Пуля создана | Тип: {projectile.shooterType}");
         }
 
         // Применяем силу
@@ -199,6 +189,7 @@ public class WeaponBase : MonoBehaviour
     public bool IsReloading() => isReloading;
     public float GetReloadProgress() => isReloading ? 1f - (reloadTimer / reloadTime) : 0f;
 
+    // ✅ НОВЫЙ МЕТОД: Сброс fireTimer (для врагов)
     public void ResetFireTimer() { fireTimer = 0f; }
 
     public virtual void SetAmmo(int ammoInMag, int ammoReserve)

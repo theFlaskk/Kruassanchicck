@@ -1,21 +1,14 @@
-using UnityEngine;
+﻿using UnityEngine;
+using System.Collections.Generic;
 
-/// <summary>
-/// ИИ врага: обнаруживает игрока, преследует и атакует.
-/// </summary>
 public class EnemyAI : MonoBehaviour
 {
     [Header("References")]
     public EnemyBase enemyBase;
 
     [Header("Detection")]
-    [Tooltip("Радиус обнаружения игрока")]
     public float detectionRange = 15f;
-
-    [Tooltip("Радиус атаки")]
     public float attackRange = 10f;
-
-    [Tooltip("Минимальная дистанция атаки")]
     public float minAttackDistance = 5f;
 
     [Header("Movement")]
@@ -30,7 +23,16 @@ public class EnemyAI : MonoBehaviour
 
     [Header("Attack")]
     public float fireCooldown = 1.5f;
-    public float accuracy = 0.1f;
+
+    [Header("Trail System")]
+    public float trailFollowDuration = 5f;
+    public float trailRefreshInterval = 1f;
+    public float checkpointReachDistance = 0.5f;
+
+    [Header("Gizmos")]
+    public bool showGizmos = true;
+    public Color checkpointColor = Color.magenta;
+    public float checkpointGizmoSize = 0.3f;
 
     private enum AIState { Patrol, Chase }
     private AIState currentState = AIState.Patrol;
@@ -39,6 +41,7 @@ public class EnemyAI : MonoBehaviour
     private EnemyWeapon enemyWeapon;
     private Rigidbody2D rb;
     private SpriteRenderer spriteRenderer;
+    private PlayerTrailManager trailManager;
 
     private int currentPatrolIndex = 0;
     private float patrolWaitTimer = 0f;
@@ -47,43 +50,36 @@ public class EnemyAI : MonoBehaviour
     private bool canSeePlayer = false;
     private float distanceToPlayer = 0f;
 
-    private LayerMask detectableLayer;
+    private LayerMask allLayers;
+
+    private List<Vector3> trailCheckpoints = new List<Vector3>();
+    private int currentCheckpointIndex = -1;
+    private float trailFollowTimer = 0f;
+    private float trailRefreshTimer = 0f;
+    private bool isFollowingTrail = false;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         spriteRenderer = GetComponent<SpriteRenderer>();
         enemyWeapon = GetComponent<EnemyWeapon>();
-        if (enemyBase == null) enemyBase = GetComponent<EnemyBase>();
+
+        if (enemyBase == null)
+            enemyBase = GetComponent<EnemyBase>();
 
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null)
         {
             player = playerObj.transform;
-        }
-        else
-        {
-            Debug.LogError("[EnemyAI] ❌ Игрок НЕ найден! Проверь Tag = 'Player'");
+            trailManager = playerObj.GetComponent<PlayerTrailManager>();
         }
 
-        detectableLayer = LayerMask.GetMask("Player");
+        allLayers = -1;
     }
 
     private void Start()
     {
-        if (patrolPoints != null && patrolPoints.Length > 0)
-        {
-            randomPatrolTarget = patrolPoints[0].position;
-        }
-        else if (randomPatrol)
-        {
-            Vector2 randomCircle = Random.insideUnitCircle * patrolRadius;
-            randomPatrolTarget = new Vector3(
-                transform.position.x + randomCircle.x,
-                transform.position.y + randomCircle.y,
-                transform.position.z
-            );
-        }
+        SelectNewPatrolTarget();
     }
 
     private void Update()
@@ -93,11 +89,14 @@ public class EnemyAI : MonoBehaviour
         if (player == null)
         {
             GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-            if (playerObj != null) player = playerObj.transform;
+            if (playerObj != null)
+            {
+                player = playerObj.transform;
+                trailManager = playerObj.GetComponent<PlayerTrailManager>();
+            }
             else return;
         }
 
-        // ✅ ✅ ✅ ВЫЗЫВАЕМ WeaponUpdate() для оружия врага (УМЕНЬШАЕТ fireTimer!)
         if (enemyWeapon != null && enemyWeapon.currentWeapon != null)
         {
             enemyWeapon.currentWeapon.WeaponUpdate();
@@ -105,6 +104,51 @@ public class EnemyAI : MonoBehaviour
 
         distanceToPlayer = Vector2.Distance(transform.position, player.position);
         canSeePlayer = CanSeePlayer();
+
+        if (canSeePlayer)
+        {
+            isFollowingTrail = false;
+            trailFollowTimer = 0f;
+            trailCheckpoints.Clear();
+            currentCheckpointIndex = -1;
+        }
+        else
+        {
+            if (distanceToPlayer > detectionRange && currentState == AIState.Chase)
+            {
+                if (!isFollowingTrail)
+                {
+                    isFollowingTrail = true;
+                    trailFollowTimer = trailFollowDuration;
+                    currentCheckpointIndex = FindNearestCheckpoint();
+                }
+            }
+
+            if (isFollowingTrail)
+            {
+                trailFollowTimer -= Time.deltaTime;
+
+                trailRefreshTimer += Time.deltaTime;
+                if (trailRefreshTimer >= trailRefreshInterval && trailManager != null)
+                {
+                    trailCheckpoints = trailManager.GetCheckpoints();
+                    trailRefreshTimer = 0f;
+
+                    if (currentCheckpointIndex == -1 && trailCheckpoints.Count > 0)
+                    {
+                        currentCheckpointIndex = FindNearestCheckpoint();
+                    }
+                }
+
+                if (trailFollowTimer <= 0f)
+                {
+                    isFollowingTrail = false;
+                    trailCheckpoints.Clear();
+                    currentCheckpointIndex = -1;
+                    ChangeState(AIState.Patrol);
+                }
+            }
+        }
 
         Debug.DrawRay(
             transform.position,
@@ -119,7 +163,6 @@ public class EnemyAI : MonoBehaviour
             case AIState.Chase: UpdateChase(); break;
         }
 
-        // Кулдаун ИИ
         if (fireTimer > 0) fireTimer -= Time.deltaTime;
     }
 
@@ -133,7 +176,7 @@ public class EnemyAI : MonoBehaviour
             patrolWaitTimer -= Time.deltaTime;
             if (patrolWaitTimer <= 0)
             {
-                SelectNextPatrolPoint();
+                SelectNewPatrolTarget();
                 patrolWaitTimer = patrolWaitTime;
             }
         }
@@ -143,7 +186,7 @@ public class EnemyAI : MonoBehaviour
             FlipSprite(direction.x);
         }
 
-        if (canSeePlayer)
+        if (canSeePlayer || isFollowingTrail)
         {
             ChangeState(AIState.Chase);
         }
@@ -151,27 +194,61 @@ public class EnemyAI : MonoBehaviour
 
     private void UpdateChase()
     {
-        if (player == null) { ChangeState(AIState.Patrol); return; }
-
-        if (!canSeePlayer && distanceToPlayer > detectionRange)
+        if (player == null)
         {
+            SelectNewPatrolTarget();
             ChangeState(AIState.Patrol);
             return;
         }
 
-        Vector2 direction = (player.position - transform.position).normalized;
-
-        if (distanceToPlayer > minAttackDistance)
+        if (!canSeePlayer && !isFollowingTrail && distanceToPlayer > detectionRange)
         {
-            rb.linearVelocity = direction * moveSpeed;
-            FlipSprite(direction.x);
-        }
-        else
-        {
-            rb.linearVelocity = Vector2.zero;
+            SelectNewPatrolTarget();
+            ChangeState(AIState.Patrol);
+            return;
         }
 
-        // Атака
+        Vector2 direction = Vector2.zero;
+
+        if (canSeePlayer)
+        {
+            direction = (player.position - transform.position).normalized;
+        }
+        else if (isFollowingTrail && trailCheckpoints.Count > 0 && currentCheckpointIndex >= 0 && currentCheckpointIndex < trailCheckpoints.Count)
+        {
+            Vector3 checkpoint = trailCheckpoints[currentCheckpointIndex];
+            float distanceToCheckpoint = Vector2.Distance(transform.position, checkpoint);
+
+            if (distanceToCheckpoint <= checkpointReachDistance)
+            {
+                currentCheckpointIndex++;
+
+                if (currentCheckpointIndex >= trailCheckpoints.Count)
+                {
+                    isFollowingTrail = false;
+                    trailCheckpoints.Clear();
+                    currentCheckpointIndex = -1;
+                }
+            }
+            else
+            {
+                direction = (checkpoint - transform.position).normalized;
+            }
+        }
+
+        if (direction != Vector2.zero)
+        {
+            if (distanceToPlayer > minAttackDistance)
+            {
+                rb.linearVelocity = direction * moveSpeed;
+                FlipSprite(direction.x);
+            }
+            else
+            {
+                rb.linearVelocity = Vector2.zero;
+            }
+        }
+
         if (canSeePlayer && distanceToPlayer <= attackRange)
         {
             if (enemyWeapon != null && fireTimer <= 0)
@@ -180,6 +257,41 @@ public class EnemyAI : MonoBehaviour
                 fireTimer = fireCooldown;
             }
         }
+    }
+
+    /// <summary>
+    /// ✅ Выбрать новую точку патруля ОТ ТЕКУЩЕЙ ПОЗИЦИИ ВРАГА
+    /// </summary>
+    private void SelectNewPatrolTarget()
+    {
+        // Генерируем случайную точку в радиусе от ТЕКУЩЕЙ позиции врага
+        // Так враг всегда начинает патруль с того места где он сейчас находится
+        Vector2 randomCircle = Random.insideUnitCircle * patrolRadius;
+        randomPatrolTarget = new Vector3(
+            transform.position.x + randomCircle.x,
+            transform.position.y + randomCircle.y,
+            transform.position.z
+        );
+    }
+
+    private int FindNearestCheckpoint()
+    {
+        if (trailCheckpoints.Count == 0) return -1;
+
+        int nearestIndex = 0;
+        float nearestDistance = Mathf.Infinity;
+
+        for (int i = 0; i < trailCheckpoints.Count; i++)
+        {
+            float distance = Vector2.Distance(transform.position, trailCheckpoints[i]);
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearestIndex = i;
+            }
+        }
+
+        return nearestIndex;
     }
 
     private bool CanSeePlayer()
@@ -191,38 +303,32 @@ public class EnemyAI : MonoBehaviour
 
         if (distance > detectionRange) return false;
 
-        RaycastHit2D hit = Physics2D.Raycast(transform.position, direction, distance, detectableLayer);
+        float rayOffset = 0.5f;
+        Vector2 rayStart = (Vector2)transform.position + (direction * rayOffset);
 
-        if (hit.collider == null) return false;
-        if (hit.collider.gameObject == gameObject) return false;
-        if (hit.collider.transform.IsChildOf(transform)) return false;
+        RaycastHit2D[] hits = Physics2D.RaycastAll(rayStart, direction, distance - rayOffset, allLayers);
 
-        return hit.collider.CompareTag("Player");
-    }
+        Debug.DrawRay(rayStart, direction * (distance - rayOffset), Color.yellow, 0.1f);
 
-    private void SelectNextPatrolPoint()
-    {
-        if (patrolPoints != null && patrolPoints.Length > 0)
+        foreach (var hit in hits)
         {
-            currentPatrolIndex = (currentPatrolIndex + 1) % patrolPoints.Length;
-            randomPatrolTarget = patrolPoints[currentPatrolIndex].position;
+            if (hit.collider == null) continue;
+
+            string hitTag = hit.collider.tag;
+
+            if (hitTag == "Enemy") continue;
+            if (hitTag == "Wall") return false;
+            if (hitTag == "Player") return true;
         }
-        else if (randomPatrol)
-        {
-            Vector2 randomCircle = Random.insideUnitCircle * patrolRadius;
-            randomPatrolTarget = new Vector3(
-                transform.position.x + randomCircle.x,
-                transform.position.y + randomCircle.y,
-                transform.position.z
-            );
-        }
+
+        return false;
     }
 
     private void ChangeState(AIState newState)
     {
         if (currentState == newState) return;
         currentState = newState;
-        fireTimer = 0f;  // Сброс кулдауна при смене состояния
+        fireTimer = 0f;
     }
 
     private void FlipSprite(float directionX)
@@ -231,13 +337,50 @@ public class EnemyAI : MonoBehaviour
         spriteRenderer.flipX = directionX < 0;
     }
 
-    private void OnDrawGizmosSelected()
+    private void OnDrawGizmos()
     {
+        if (!showGizmos) return;
+
+        Gizmos.color = checkpointColor;
+
+        if (trailCheckpoints.Count > 0)
+        {
+            for (int i = 0; i < trailCheckpoints.Count - 1; i++)
+            {
+                Gizmos.DrawLine(trailCheckpoints[i], trailCheckpoints[i + 1]);
+            }
+
+            for (int i = 0; i < trailCheckpoints.Count; i++)
+            {
+                if (i == currentCheckpointIndex)
+                {
+                    Gizmos.color = Color.yellow;
+                    Gizmos.DrawSphere(trailCheckpoints[i], checkpointGizmoSize * 1.5f);
+                    Gizmos.color = checkpointColor;
+                }
+                else
+                {
+                    Gizmos.DrawSphere(trailCheckpoints[i], checkpointGizmoSize);
+                }
+            }
+        }
+
+        // Линия к цели патруля (голубая)
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawLine(transform.position, randomPatrolTarget);
+        Gizmos.DrawWireSphere(randomPatrolTarget, 0.5f);
+
+        // Радиусы
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, detectionRange);
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, attackRange);
         Gizmos.color = Color.blue;
         Gizmos.DrawWireSphere(transform.position, minAttackDistance);
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        OnDrawGizmos();
     }
 }

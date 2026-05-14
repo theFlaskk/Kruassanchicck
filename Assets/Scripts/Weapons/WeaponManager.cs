@@ -2,9 +2,6 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 
-/// <summary>
-/// Менеджер оружия с инвентарём на 3 слота и системой подбора.
-/// </summary>
 public class WeaponManager : MonoBehaviour
 {
     [Header("Anchor")]
@@ -20,11 +17,9 @@ public class WeaponManager : MonoBehaviour
     public WeaponBase startingWeaponSlot3;
 
     [Header("Pickup Prefabs")]
-    [Tooltip("Префабы оружия для подбора (из папки Pickups)")]
     public WeaponBase[] pickupPrefabs;
 
     [Header("Pickup Settings")]
-    [Tooltip("Заменять текущее оружие если инвентарь полон")]
     public bool replaceCurrentWeaponOnFull = true;
 
     private List<WeaponBase> inventory = new List<WeaponBase>(new WeaponBase[3]);
@@ -43,8 +38,6 @@ public class WeaponManager : MonoBehaviour
         mainCamera = Camera.main;
         playerSprite = GetComponent<SpriteRenderer>();
         if (playerSprite == null) playerSprite = GetComponentInChildren<SpriteRenderer>();
-        if (weaponAnchor == null) Debug.LogError("[WeaponManager] Weapon Anchor не назначен!");
-        if (mainCamera == null) Debug.LogError("[WeaponManager] Camera.main не найдена!");
     }
 
     private void Start() => InitializeInventory();
@@ -56,7 +49,6 @@ public class WeaponManager : MonoBehaviour
         if (startingWeaponSlot3 != null) { inventory[2] = Instantiate(startingWeaponSlot3); inventory[2].gameObject.SetActive(false); }
         EquipFirstAvailableWeapon();
         OnInventoryUpdated?.Invoke(inventory);
-        Debug.Log($"[WeaponManager] 🎒 Инвентарь: [{GetWeaponName(0)}] [{GetWeaponName(1)}] [{GetWeaponName(2)}]");
     }
 
     private void EquipFirstAvailableWeapon()
@@ -139,16 +131,11 @@ public class WeaponManager : MonoBehaviour
         OnInventoryUpdated?.Invoke(inventory);
     }
 
-    // ============================================================
-    // ✅ ПОДБОР ОРУЖИЯ
-    // ============================================================
-
     public void PickUpWeapon(WeaponBase weaponPrefab) => PickUpWeaponWithAmmo(weaponPrefab, -1, -1);
 
     public bool PickUpWeaponWithAmmo(WeaponBase weaponPrefab, int ammoInMag, int ammoReserve)
     {
         if (weaponPrefab == null) return false;
-        Debug.Log($"[WeaponManager] 📦 Подбор: {weaponPrefab.weaponName}");
 
         int emptySlot = FindEmptySlot();
         WeaponBase newWeapon = null;
@@ -159,7 +146,6 @@ public class WeaponManager : MonoBehaviour
             inventory[emptySlot] = newWeapon;
             newWeapon.gameObject.SetActive(false);
             if (ammoInMag >= 0) newWeapon.SetAmmo(ammoInMag, 0);
-            Debug.Log($"[WeaponManager] ✅ В слот {emptySlot + 1}");
             if (currentSlotIndex == emptySlot || currentWeapon == null)
             {
                 currentSlotIndex = emptySlot;
@@ -170,7 +156,6 @@ public class WeaponManager : MonoBehaviour
         {
             int oldSlotIndex = currentSlotIndex;
             WeaponBase oldWeapon = currentWeapon;
-            Debug.Log($"[WeaponManager] 🔄 Инвентарь полон! Замена в слоте {oldSlotIndex + 1}...");
 
             if (oldWeapon != null) oldWeapon.OnUnequip();
             currentWeapon = null;
@@ -191,14 +176,12 @@ public class WeaponManager : MonoBehaviour
             inventory[oldSlotIndex] = newWeapon;
             newWeapon.gameObject.SetActive(false);
             if (ammoInMag >= 0) newWeapon.SetAmmo(ammoInMag, 0);
-            Debug.Log($"[WeaponManager] ✅ Новое оружие в слоте {oldSlotIndex + 1}");
 
             currentSlotIndex = oldSlotIndex;
             EquipCurrentWeapon();
         }
         else
         {
-            Debug.LogWarning("[WeaponManager] ⚠️ Инвентарь полон! Оружие не подобрано.");
             return false;
         }
 
@@ -206,24 +189,13 @@ public class WeaponManager : MonoBehaviour
         return true;
     }
 
-    // ============================================================
-    // ✅ ВЫБРАСЫВАНИЕ ОРУЖИЯ
-    // ============================================================
-
     public void DropCurrentWeaponAtPosition(Vector3 dropPosition, bool skipSwitch = false)
     {
-        if (currentWeapon == null)
-        {
-            Debug.LogWarning("[WeaponManager] ⚠️ Нет оружия для выбрасывания!");
-            return;
-        }
-
-        Debug.Log($"[WeaponManager] 🗑️ Выброс: {currentWeapon.weaponName} | {currentWeapon.GetCurrentAmmoInMag()}/{currentWeapon.GetMaxMagazineSize()}");
+        if (currentWeapon == null) return;
 
         WeaponBase pickupPrefab = FindPickupPrefabByName(currentWeapon.weaponName);
         if (pickupPrefab == null)
         {
-            Debug.LogWarning($"[WeaponManager] ⚠️ Не найден префаб для '{currentWeapon.weaponName}' в pickupPrefabs!");
             Destroy(currentWeapon.gameObject);
             inventory[currentSlotIndex] = null;
             if (!skipSwitch) SwitchToNextWeapon();
@@ -235,7 +207,6 @@ public class WeaponManager : MonoBehaviour
         if (weaponDrop != null)
         {
             weaponDrop.savedAmmoInMag = currentWeapon.GetCurrentAmmoInMag();
-            Debug.Log($"[WeaponManager] 💾 Патроны сохранены: {weaponDrop.savedAmmoInMag}/{currentWeapon.GetMaxMagazineSize()}");
         }
 
         Destroy(currentWeapon.gameObject);
@@ -246,17 +217,10 @@ public class WeaponManager : MonoBehaviour
 
     public void DropCurrentWeapon() => DropCurrentWeaponAtPosition(transform.position);
 
-    // ============================================================
-    // ✅ ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
-    // ============================================================
-
     private WeaponBase FindPickupPrefabByName(string weaponName)
     {
         if (string.IsNullOrEmpty(weaponName) || pickupPrefabs == null) return null;
-        WeaponBase found = pickupPrefabs.FirstOrDefault(p => p != null && p.weaponName == weaponName);
-        if (found != null) Debug.Log($"[WeaponManager] 🔍 Найден префаб: {weaponName}");
-        else Debug.LogWarning($"[WeaponManager] ❌ Не найден префаб: {weaponName}. Проверь pickupPrefabs массив!");
-        return found;
+        return pickupPrefabs.FirstOrDefault(p => p != null && p.weaponName == weaponName);
     }
 
     private int FindEmptySlot()
@@ -278,7 +242,6 @@ public class WeaponManager : MonoBehaviour
         currentWeapon.UpdateAimDirection(mousePos);
     }
 
-    // === ПУБЛИЧНЫЕ МЕТОДЫ ===
     public WeaponBase GetCurrentWeapon() => currentWeapon;
     public int GetCurrentSlotIndex() => currentSlotIndex;
     public List<WeaponBase> GetInventory() => inventory;

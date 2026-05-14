@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 8236789510654564418}
   m_Layer: 7
   m_Name: ProjectilePrefab
-  m_TagString: Projectile
+  m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -169,7 +169,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0989763d9d14d814fb38a757b26d9c86, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Projectile
-  ignoreShooterTime: 2
+  shooterType: 0
+  damageDelay: 0.003
   damage: 10
   lifetime: 50
   shooter: {fileID: 0}

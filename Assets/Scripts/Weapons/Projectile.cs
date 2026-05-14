@@ -2,6 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// Скрипт пули с разделением на пули игрока и врагов.
+/// Урон наносится только после задержки (защита от самопопадания).
 /// </summary>
 public class Projectile : MonoBehaviour
 {
@@ -11,8 +12,8 @@ public class Projectile : MonoBehaviour
     [Tooltip("Кто выстрелил")]
     public ShooterType shooterType = ShooterType.Player;
 
-    [Tooltip("Время игнорирования стрелка (секунды)")]
-    public float ignoreShooterTime = 0.3f;
+    [Tooltip("Время до включения урона (секунды)")]
+    public float damageDelay = 0.3f;
 
     [Tooltip("Урон пули")]
     public int damage = 10;
@@ -25,31 +26,24 @@ public class Projectile : MonoBehaviour
     [Tooltip("Кто выстрелил (заполняется автоматически)")]
     public GameObject shooter;
 
-    private Collider2D shooterCollider;
-    private float ignoreTimer = 0f;
+    private float damageTimer = 0f;
     private bool hasHit = false;
 
     private void Start()
     {
+        // Уничтожить пулю через время жизни
         Destroy(gameObject, lifetime);
 
-        if (shooter != null)
-        {
-            shooterCollider = shooter.GetComponent<Collider2D>();
-            if (shooterCollider == null)
-            {
-                shooterCollider = shooter.GetComponentInChildren<Collider2D>();
-            }
-        }
-
-        Debug.Log($"[Projectile] 🚀 Пуля создана | Тип: {shooterType} | Урон: {damage}");
+        // Запустить таймер задержки урона
+        damageTimer = damageDelay;
     }
 
     private void Update()
     {
-        if (ignoreTimer < ignoreShooterTime)
+        // Уменьшаем таймер до включения урона
+        if (damageTimer > 0f)
         {
-            ignoreTimer += Time.deltaTime;
+            damageTimer -= Time.deltaTime;
         }
     }
 
@@ -58,14 +52,10 @@ public class Projectile : MonoBehaviour
         // Игнорируем саму себя
         if (other.gameObject == gameObject) return;
 
-        // Игнорируем стрелка в первые 0.3 секунды (защита от вертикальной стрельбы)
-        if (ignoreTimer < ignoreShooterTime)
+        // ✅ ПРОВЕРКА: Урон ещё не включён — игнорируем ВСЕ попадания
+        if (damageTimer > 0f)
         {
-            if (shooterCollider != null && other == shooterCollider)
-            {
-                Debug.Log($"[Projectile] ⚠️ Игнорируем стрелка: {other.name}");
-                return;
-            }
+            return;
         }
 
         // ============================================
@@ -74,22 +64,15 @@ public class Projectile : MonoBehaviour
         if (shooterType == ShooterType.Player)
         {
             // Игнорируем игрока (свой не дамажит себя)
-            if (other.CompareTag("Player"))
-            {
-                Debug.Log($"[Projectile] 👤 Пуля игрока игнорирует игрока: {other.name}");
-                return;
-            }
+            if (other.CompareTag("Player")) return;
 
             // Дамажим врагов
             if (other.CompareTag("Enemy"))
             {
-                Debug.Log($"[Projectile] 💥 Пуля игрока попала во врага: {other.name} | Урон: {damage}");
-
                 EnemyBase enemy = other.GetComponent<EnemyBase>();
                 if (enemy != null)
                 {
                     enemy.TakeDamage(damage);
-                    Debug.Log($"[Projectile] 🗡️ Урон нанесён: {damage}");
                 }
 
                 hasHit = true;
@@ -104,19 +87,13 @@ public class Projectile : MonoBehaviour
         if (shooterType == ShooterType.Enemy)
         {
             // Игнорируем врагов (свой не дамажит своих)
-            if (other.CompareTag("Enemy"))
-            {
-                Debug.Log($"[Projectile] 👤 Пуля врага игнорирует врага: {other.name}");
-                return;
-            }
+            if (other.CompareTag("Enemy")) return;
 
             // Дамажим игрока
             if (other.CompareTag("Player"))
             {
-                Debug.Log($"[Projectile] 💥 Пуля врага попала в игрока: {other.name} | Урон: {damage}");
-
-                // Здесь можно добавить урон игроку
-                // PlayerHealth player = other.GetComponent<PlayerHealth>();
+                // Урон игроку (если есть система здоровья)
+                // PlayerStats player = other.GetComponent<PlayerStats>();
                 // if (player != null) player.TakeDamage(damage);
 
                 hasHit = true;
@@ -125,10 +102,9 @@ public class Projectile : MonoBehaviour
             }
         }
 
-        // Попали в стену (не Trigger)?
+        // Попали в стену (не триггер)?
         if (!other.isTrigger)
         {
-            Debug.Log($"[Projectile] 🧱 Пуля попала в стену: {other.name}");
             hasHit = true;
             Destroy(gameObject);
         }
